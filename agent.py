@@ -1,10 +1,12 @@
 import os
 import json
-import asyncio
 import socket
-import platform
+import asyncio
 import logging
+import platform
 import websockets
+import subprocess
+from lib.scripts import replace_scripts
 from lib.config import load_config, save_config, get_config_value, set_agent_id, get_agent_id, reset_agent
 
 # Configure logging
@@ -28,6 +30,8 @@ AGENT_INFO = {
     "services": 2,
     "version": "1.0.0"
 }
+
+COLLECTION_INTERVAL = get_config_value("collectionInterval", 5)
 
 def build_message(msg_type, payload=None):
     return json.dumps({
@@ -117,10 +121,28 @@ async def receiver(ws):
     while True:
         msg = await ws.recv()
         try:
-            config = json.loads(msg)
-            logger.info(f"Received config: {config}")
-            update_connection_settings(config)
-            save_config(config)
+            payload = json.loads(msg)
+
+            if isinstance(payload, dict) and payload.get("change") == "script":
+                scripts_payload = payload.get("payload")
+                if scripts_payload:
+                    all_scripts = []
+
+                    for key in ["containers", "databases", "webservers", "runtimes", "customs"]:
+                        if key in scripts_payload and isinstance(scripts_payload[key], list):
+                            all_scripts.extend(scripts_payload[key])
+
+                    replace_scripts(all_scripts)
+                    logger.info(f"Saved {len(all_scripts)} scripts from update.")
+                    
+            elif isinstance(payload, dict) and payload.get("change") == "config":
+                logger.info(f"Received config update.")
+                update_connection_settings(payload)
+                save_config(payload)
+
+            else:
+                logger.warning(f"Unkown structured message: {payload}")
+                
         except json.JSONDecodeError:
             if msg == "HEARTBEAT_ACK":
                 logger.info("Heartbeat acknowledged.")

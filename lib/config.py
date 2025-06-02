@@ -1,6 +1,7 @@
 # config.py
 import os
 import json
+import logging
 
 CONFIG_PATH = "./config.json"
 AGENT_ID = None
@@ -16,13 +17,13 @@ def load_config():
         data = json.load(f)
         if "agent_id" in data:
             AGENT_ID = data["agent_id"]
-            print(f"[config] Loaded agent_id from config: {AGENT_ID}")
+            logging.info(f"[config] Loaded agent_id from config: {AGENT_ID}")
         return data
     
 def reset_agent():
     if os.path.exists(CONFIG_PATH):
         os.remove(CONFIG_PATH)
-        print("Config deleted due to denial.")
+        logging.info("Config deleted due to denial.")
     set_agent_id(None)
 
 def save_config(data):
