@@ -112,6 +112,44 @@ async def heartbeat_task():
         
         await asyncio.sleep(10)
 
+async def version_collector_task():
+    from lib.scripts import load_scripts
+
+    logger = logging.getLogger(__name__)
+
+    while True:
+        agent_id = get_agent_id()
+        token = get_config_value("token")
+
+        if not agent_id or not token:
+            logger.warning("Skipping version collection: agent_id or token not set")
+        else:
+            collected_versions = []
+            scripts = load_scripts()
+
+            for script in scripts:
+                try:
+                    cmd = script["command"]
+                    result = subprocess.check_output(cmd, shell=True, stderr=subprocess.STDOUT).decode().strip()
+                    collected_versions.append({
+                        "name": script["name"],
+                        "category": script["category"],
+                        "version": result
+                    })
+                except Exception as e:
+                    logger.error(f"Failed to run script '{script['name']}': {e}")
+
+            payload = {
+                "id": agent_id,
+                "token": token,
+                "versions": collected_versions
+            }
+
+            await send_queue.put(build_message("VERSIONS", payload))
+
+        interval_minutes = get_config_value("collectionInterval", 5)
+        await asyncio.sleep(interval_minutes * 60)
+
 async def sender(ws):
     while True:
         msg = await send_queue.get()
@@ -170,7 +208,8 @@ async def agent_lifecycle():
                 await asyncio.gather(
                     sender(ws),
                     receiver(ws),
-                    heartbeat_task()
+                    heartbeat_task(),
+                    version_collector_task()
                 )
         except Exception as e:
             logger.error(f"Connection failed or lost: {e}")
